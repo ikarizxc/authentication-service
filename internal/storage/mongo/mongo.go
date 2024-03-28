@@ -1,6 +1,7 @@
 package mongo
 
 import (
+	"authentication-service/internal/tokens"
 	"context"
 	"fmt"
 	"os"
@@ -33,16 +34,58 @@ func (mongoDB *MongoDB) Disconnect() error {
 }
 
 func (mongoDB *MongoDB) WriteRefreshToken(guid, refreshToken string) error {
-	coll := mongoDB.client.Database("authentication-service").Collection("refresh-tokens")
+	coll := mongoDB.GetColl("refresh-tokens")
 
-	_, err := coll.InsertOne(context.TODO(), bson.M{
+	doc := bson.M{
 		"guid":         guid,
 		"refreshToken": refreshToken,
-	})
+	}
+
+	_, err := coll.InsertOne(context.TODO(), doc)
 
 	if err != nil {
 		return err
 	}
 
 	return nil
+}
+
+func (mongoDB *MongoDB) UpdateRefreshToken(guid, refreshToken string) error {
+	coll := mongoDB.GetColl("refresh-tokens")
+
+	filter := bson.M{"guid": guid}
+
+	update := bson.D{{Key: "$set", Value: bson.D{{Key: "refreshToken", Value: refreshToken}}}}
+
+	_, err := coll.UpdateOne(context.TODO(), filter, update)
+
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (mongoDB *MongoDB) ReadRefreshToken(guid string) (string, error) {
+	coll := mongoDB.client.Database("authentication-service").Collection("refresh-tokens")
+
+	var readToken tokens.Token
+
+	filter := bson.M{"guid": guid}
+
+	err := coll.FindOne(context.TODO(), filter).Decode(&readToken)
+
+	if err != nil {
+		if err == mongo.ErrNoDocuments {
+			return "", nil
+		}
+
+		return "", err
+	}
+
+	return readToken.RefreshToken, nil
+}
+
+func (mongoDB *MongoDB) GetColl(collName string) *mongo.Collection {
+	return mongoDB.client.Database(os.Getenv("DB_NAME")).Collection(collName)
 }

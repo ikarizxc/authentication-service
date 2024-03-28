@@ -2,13 +2,12 @@ package main
 
 import (
 	"authentication-service/internal/config"
-	"authentication-service/internal/controllers/authController"
+	"authentication-service/internal/routers"
 	"authentication-service/internal/storage/mongo"
 	"log"
 	"log/slog"
 	"net/http"
 
-	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
 )
 
@@ -33,14 +32,8 @@ func main() {
 		}
 	}()
 
-	_ = storage
-
-	// routes
-	router := gin.Default()
-
-	authController := authController.AuthController{Storage: storage}
-
-	router.GET("/", authController.GetTokens)
+	// router
+	router := routers.SetupRouter(storage)
 
 	// server
 	log.Println("starting server")
