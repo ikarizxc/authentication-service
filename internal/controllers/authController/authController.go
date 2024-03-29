@@ -34,29 +34,19 @@ func (authController *AuthController) GetTokens(c *gin.Context) {
 		return
 	}
 
+	// rewrite refresh token in db
+	if err := authController.writeRefreshTokenInDB(guid, refreshToken); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"message": "internal server error",
+		})
+		c.Error(err)
+		return
+	}
+
 	// refreshtoken to base64
 	refreshTokenBase64 := base64.StdEncoding.EncodeToString([]byte(refreshToken))
 
-	// refreshtoken to bcrypt hash
-	refreshTokenBcrypt, err := tokens.GenerateHashToken(refreshToken)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"message": "internal server error",
-		})
-		c.Error(err)
-		return
-	}
-
-	// rewrite refresh token in db
-	if err := authController.RewriteRefreshToken(guid, refreshTokenBcrypt); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"message": "internal server error",
-		})
-		c.Error(err)
-		return
-	}
-
-	SetCookie(c, accessToken, refreshTokenBase64)
+	setCookie(c, accessToken, refreshTokenBase64)
 
 	c.JSON(http.StatusOK, gin.H{
 		"accessToken":  accessToken,
@@ -82,7 +72,7 @@ func (authController *AuthController) RefreshTokens(c *gin.Context) {
 		return
 	}
 
-	cookieRefreshToken, err := c.Cookie("refreshToken")
+	cookieRefreshToken, err := c.Request.Cookie("refreshToken")
 	if err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{
 			"message": "unauthorized",
@@ -91,16 +81,18 @@ func (authController *AuthController) RefreshTokens(c *gin.Context) {
 		return
 	}
 
-	// check if refreshtoken is expired
-	// if cookieRefreshToken.MaxAge <= time.Now() {
-	// 	c.JSON(http.StatusUnauthorized, gin.H{
-	// 		"message": "unauthorized",
-	// 	})
-	// 	c.Error(err)
-	// 	return
-	// }
+	refreshTokenEncrypted := cookieRefreshToken.Value
 
-	refreshTokenDecryptedBytes, err := base64.StdEncoding.DecodeString(cookieRefreshToken)
+	// check if refreshtoken is expired
+	if cookieRefreshToken.MaxAge < 0 {
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"message": "unauthorized",
+		})
+		c.Error(err)
+		return
+	}
+
+	refreshTokenDecryptedBytes, err := base64.StdEncoding.DecodeString(refreshTokenEncrypted)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"message": "internal server error",
@@ -120,17 +112,8 @@ func (authController *AuthController) RefreshTokens(c *gin.Context) {
 		return
 	}
 
-	// match with refreshtokenhash from db
-	refreshTokenHashFromStorage, err := authController.Storage.ReadRefreshToken(guid)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"message": "internal server error",
-		})
-		c.Error(err)
-		return
-	}
-
-	if err := bcrypt.CompareHashAndPassword([]byte(refreshTokenHashFromStorage), refreshTokenDecryptedBytes); err != nil {
+	// match refreshtokendecrypted with refreshtokenhash from db
+	if err := authController.matchRefreshTokenWithHash(refreshTokenDecryptedBytes, guid); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"message": "internal server error",
 		})
@@ -148,29 +131,19 @@ func (authController *AuthController) RefreshTokens(c *gin.Context) {
 		return
 	}
 
+	// rewrite refresh token in db
+	if err := authController.writeRefreshTokenInDB(guid, refreshToken); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"message": "internal server error",
+		})
+		c.Error(err)
+		return
+	}
+
 	// refreshtoken to base64
 	refreshTokenBase64 := base64.StdEncoding.EncodeToString([]byte(refreshToken))
 
-	// refreshtoken to bcrypt hash
-	refreshTokenBcrypt, err := tokens.GenerateHashToken(refreshToken)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"message": "internal server error",
-		})
-		c.Error(err)
-		return
-	}
-
-	// rewrite refresh token in db
-	if err := authController.RewriteRefreshToken(guid, refreshTokenBcrypt); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"message": "internal server error",
-		})
-		c.Error(err)
-		return
-	}
-
-	SetCookie(c, accessToken, refreshTokenBase64)
+	setCookie(c, accessToken, refreshTokenBase64)
 
 	c.JSON(http.StatusOK, gin.H{
 		"accessToken":  accessToken,
@@ -178,7 +151,26 @@ func (authController *AuthController) RefreshTokens(c *gin.Context) {
 	})
 }
 
-func (authController *AuthController) RewriteRefreshToken(guid, refreshTokenBcrypt string) error {
+func (authController *AuthController) matchRefreshTokenWithHash(refreshToken []byte, guid string) error {
+	refreshTokenHashFromStorage, err := authController.Storage.ReadRefreshToken(guid)
+	if err != nil {
+		return err
+	}
+
+	if err := bcrypt.CompareHashAndPassword([]byte(refreshTokenHashFromStorage), refreshToken); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (authController *AuthController) writeRefreshTokenInDB(guid, refreshToken string) error {
+	// refreshtoken to bcrypt hash
+	refreshTokenBcrypt, err := tokens.GenerateHashToken(refreshToken)
+	if err != nil {
+		return err
+	}
+
 	if rt, err := authController.Storage.ReadRefreshToken(guid); rt == "" && err == nil {
 		// guid does not exist
 		err = authController.Storage.WriteRefreshToken(guid, string(refreshTokenBcrypt))
@@ -199,11 +191,10 @@ func (authController *AuthController) RewriteRefreshToken(guid, refreshTokenBcry
 	return nil
 }
 
-func SetCookie(c *gin.Context, accessToken, refreshToken string) {
+func setCookie(c *gin.Context, accessToken, refreshToken string) {
 	http.SetCookie(c.Writer, &http.Cookie{
 		Name:     "accessToken",
 		Value:    accessToken,
-		MaxAge:   60 * 15,
 		Path:     "/",
 		Domain:   "localhost",
 		Secure:   false,
