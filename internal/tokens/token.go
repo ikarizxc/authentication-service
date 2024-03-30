@@ -41,7 +41,7 @@ func GenerateAccessToken(guid string) (string, error) {
 
 func GetClaims(guid string, ttl time.Duration) *jwt.MapClaims {
 	return &jwt.MapClaims{
-		"guid": guid,
+		"sub": guid,
 		"exp":  &jwt.NumericDate{Time: time.Now().Add(ttl)},
 	}
 }

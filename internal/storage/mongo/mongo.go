@@ -15,6 +15,11 @@ type MongoDB struct {
 	client *mongo.Client
 }
 
+const (
+	dbName   = "authentication-service"
+	collName = "refresh-tokens"
+)
+
 func New() (*MongoDB, error) {
 	uri := os.Getenv("MONGODB_URI")
 	if uri == "" {
@@ -34,7 +39,7 @@ func (mongoDB *MongoDB) Disconnect() error {
 }
 
 func (mongoDB *MongoDB) WriteRefreshToken(guid, refreshToken string) error {
-	coll := mongoDB.GetColl("refresh-tokens")
+	coll := mongoDB.client.Database(dbName).Collection(collName)
 
 	doc := bson.M{
 		"guid":         guid,
@@ -51,7 +56,7 @@ func (mongoDB *MongoDB) WriteRefreshToken(guid, refreshToken string) error {
 }
 
 func (mongoDB *MongoDB) UpdateRefreshToken(guid, refreshToken string) error {
-	coll := mongoDB.GetColl("refresh-tokens")
+	coll := mongoDB.client.Database(dbName).Collection(collName)
 
 	filter := bson.M{"guid": guid}
 
@@ -67,7 +72,7 @@ func (mongoDB *MongoDB) UpdateRefreshToken(guid, refreshToken string) error {
 }
 
 func (mongoDB *MongoDB) ReadRefreshToken(guid string) (string, error) {
-	coll := mongoDB.client.Database("authentication-service").Collection("refresh-tokens")
+	coll := mongoDB.client.Database(dbName).Collection(collName)
 
 	var readToken tokens.Token
 
@@ -84,8 +89,4 @@ func (mongoDB *MongoDB) ReadRefreshToken(guid string) (string, error) {
 	}
 
 	return readToken.RefreshToken, nil
-}
-
-func (mongoDB *MongoDB) GetColl(collName string) *mongo.Collection {
-	return mongoDB.client.Database(os.Getenv("DB_NAME")).Collection(collName)
 }

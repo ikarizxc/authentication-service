@@ -114,8 +114,8 @@ func (authController *AuthController) RefreshTokens(c *gin.Context) {
 
 	// match refreshtokendecrypted with refreshtokenhash from db
 	if err := authController.matchRefreshTokenWithHash(refreshTokenDecryptedBytes, guid); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"message": "internal server error",
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"message": "unauthorized",
 		})
 		c.Error(err)
 		return
